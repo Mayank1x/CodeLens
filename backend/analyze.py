@@ -92,6 +92,11 @@ Examples:
         help="Programming language (auto-detected from extension if not specified).",
     )
     parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Run the LLM semantic analysis layer in addition to static analysis.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="output_json",
@@ -125,15 +130,33 @@ Examples:
             )
             sys.exit(1)
 
-    # Run analysis
+    # Run Static Analysis
     analyzer = StaticAnalyzer()
-    issues, elapsed_ms = analyzer.analyze_timed(code, language)
+    issues, static_ms = analyzer.analyze_timed(code, language)
+    total_ms = static_ms
+
+    # Run LLM Analysis if requested
+    if args.llm:
+        from llm_reviewer.reviewer import LLMReviewer
+        llm_start = time.perf_counter()
+        
+        # We wrap in a try-except here just in case the provider initialization
+        # (e.g. missing API keys) fails. The reviewer gracefully handles missing keys
+        # but we want to be absolutely sure the CLI doesn't crash.
+        try:
+            reviewer = LLMReviewer()
+            issues = reviewer.analyze(code, language, issues)
+        except Exception as e:
+            print(f"\nWarning: LLM analysis failed to initialize: {e}\n", file=sys.stderr)
+            
+        llm_ms = (time.perf_counter() - llm_start) * 1000
+        total_ms += llm_ms
 
     # Output results
     if args.output_json:
-        _output_json(issues, elapsed_ms, args.file, language)
+        _output_json(issues, total_ms, args.file, language)
     else:
-        _output_formatted(issues, elapsed_ms, args.file, language, code)
+        _output_formatted(issues, total_ms, args.file, language, code, used_llm=args.llm)
 
 
 def _output_json(issues: list[Issue], elapsed_ms: float, filepath: str, language: str):
@@ -154,15 +177,19 @@ def _output_json(issues: list[Issue], elapsed_ms: float, filepath: str, language
 
 
 def _output_formatted(
-    issues: list[Issue], elapsed_ms: float, filepath: str, language: str, code: str
+    issues: list[Issue], elapsed_ms: float, filepath: str, language: str, code: str, used_llm: bool = False
 ):
     """Output analysis results as formatted, human-readable text with colors."""
     lines = code.split("\n")
 
     # Header
+    title = "CodeReview AI — Static + LLM Analysis" if used_llm else "CodeReview AI — Static Analysis"
+    padding = (48 - len(title)) // 2
+    padded_title = " " * padding + title + " " * (48 - len(title) - padding)
+
     print()
     print(f"{COLORS['bold']}╔══════════════════════════════════════════════════╗{COLORS['reset']}")
-    print(f"{COLORS['bold']}║          CodeReview AI — Static Analysis         ║{COLORS['reset']}")
+    print(f"{COLORS['bold']}║{padded_title}║{COLORS['reset']}")
     print(f"{COLORS['bold']}╚══════════════════════════════════════════════════╝{COLORS['reset']}")
     print()
     print(f"  File:     {filepath}")
