@@ -1,0 +1,88 @@
+### CodeReview AI — API Request Examples
+### Use with VS Code REST Client extension or IntelliJ HTTP Client
+### Base URL: http://localhost:5000
+
+### ==========================================================================
+### Health Check
+### ==========================================================================
+
+GET http://localhost:5000/health
+Content-Type: application/json
+
+### ==========================================================================
+### Auth: GitHub OAuth Callback
+### (Requires a valid GitHub OAuth code — get one from the frontend OAuth flow)
+### ==========================================================================
+
+POST http://localhost:5000/api/auth/github/callback
+Content-Type: application/json
+
+{
+    "code": "YOUR_GITHUB_OAUTH_CODE_HERE"
+}
+
+### ==========================================================================
+### Submit a Code Review (SKIP_AUTH=true mode — no token needed)
+### ==========================================================================
+
+POST http://localhost:5000/api/review
+Content-Type: application/json
+
+{
+    "code": "import os\n\ndef process_data(items=[]):\n    password = 'admin123'\n    query = \"SELECT * FROM users WHERE id = \" + user_id\n    try:\n        result = do_something()\n    except:\n        pass\n    while True:\n        print('running')\n    return items",
+    "language": "python"
+}
+
+### ==========================================================================
+### Poll for Review Results
+### (Replace <review_id> with the actual ID from the submit response)
+### ==========================================================================
+
+GET http://localhost:5000/api/review/<review_id>
+Content-Type: application/json
+
+### ==========================================================================
+### Get Review History (Paginated)
+### ==========================================================================
+
+GET http://localhost:5000/api/history?page=1&per_page=10
+Content-Type: application/json
+
+### ==========================================================================
+### Get Aggregate Stats
+### ==========================================================================
+
+GET http://localhost:5000/api/stats
+Content-Type: application/json
+
+### ==========================================================================
+### Submit with JWT Token (when SKIP_AUTH is not set)
+### (Replace <your_jwt_token> with the token from the auth callback)
+### ==========================================================================
+
+POST http://localhost:5000/api/review
+Content-Type: application/json
+Authorization: Bearer <your_jwt_token>
+
+{
+    "code": "def hello():\n    print('world')",
+    "language": "python"
+}
+
+### ==========================================================================
+### Error Cases — Input Validation
+### ==========================================================================
+
+### Missing code field
+POST http://localhost:5000/api/review
+Content-Type: application/json
+
+{
+    "language": "python"
+}
+
+### Non-JSON body
+POST http://localhost:5000/api/review
+Content-Type: text/plain
+
+This is not JSON
