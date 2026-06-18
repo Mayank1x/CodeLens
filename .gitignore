@@ -51,3 +51,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+
+# Docker
+docker-compose.override.yml
+postgres-data/

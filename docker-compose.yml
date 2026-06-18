@@ -1,0 +1,66 @@
+# =============================================================================
+# CodeReview AI — Docker Compose (Local Development)
+# =============================================================================
+# Usage:
+#   docker-compose up        — Start both services (Postgres + Flask)
+#   docker-compose up -d     — Start in detached mode
+#   docker-compose down      — Stop and remove containers
+#   docker-compose down -v   — Stop and remove containers + data volume
+#
+# The Flask app will be available at: http://localhost:5000
+# PostgreSQL will be available at: localhost:5432
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: codelens
+      POSTGRES_PASSWORD: codelens
+      POSTGRES_DB: codelens
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume for data persistence across container restarts
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Wait for Postgres to be ready before starting the backend
+      test: ["CMD-SHELL", "pg_isready -U codelens -d codelens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Flask Backend
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      # Override DATABASE_URL to point to the Docker network hostname 'db'
+      # (not 'localhost', since the backend container can't reach its own localhost)
+      DATABASE_URL: postgresql://codelens:codelens@db:5432/codelens
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      FLASK_DEBUG: "1"
+    env_file:
+      # Load API keys and other secrets from the .env file
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # Override the Dockerfile CMD for development — use Flask's dev server
+    # with hot-reload instead of gunicorn
+    command: flask run --host=0.0.0.0 --port=5000 --reload
+    volumes:
+      # Mount source code for hot-reload during development
+      - ./backend:/app
+
+volumes:
+  postgres-data:
