@@ -16,6 +16,8 @@ def build_review_prompt(code: str, language: str, static_issues: list[Issue]) ->
     static analyzer and instruct the LLM NOT to flag them again. This is
     crucial for a two-layer system to prevent duplicate noise.
     """
+    numbered_code = "\n".join(f"{i+1:03d} | {line}" for i, line in enumerate(code.splitlines()))
+
     prompt = f"""
 You are an expert senior software engineer performing a code review.
 Please analyze the following {language} code for semantic bugs, race conditions,
@@ -24,9 +26,9 @@ resource leaks, architectural flaws, and bad practices.
 DO NOT flag syntax errors. Assume the code compiles/runs.
 DO NOT focus on trivial style issues (like line length) unless they severely impact readability.
 
-CODE TO REVIEW:
+CODE TO REVIEW (with line numbers):
 ```
-{code}
+{numbered_code}
 ```
 
 IMPORTANT: A static analysis tool has already run on this code and found the following issues.

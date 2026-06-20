@@ -67,7 +67,7 @@ class Review(db.Model):
         }
 
         if include_issues:
-            data["code_snippet"] = self.code_snippet
+            data["code"] = self.code_snippet
             data["issues"] = [issue.to_dict() for issue in self.issues.all()]
 
         return data

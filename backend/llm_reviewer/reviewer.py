@@ -41,7 +41,7 @@ class LLMReviewer:
             self.fallback = None
             # Not having a fallback is fine, we just won't fall back
 
-        self.timeout_seconds = 8
+        self.timeout_seconds = 30
 
     def analyze(self, code: str, language: str, static_issues: list[Issue]) -> list[Issue]:
         """Run the LLM review and merge results with static issues.

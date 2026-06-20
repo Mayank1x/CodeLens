@@ -1,0 +1,32 @@
+.history-page {
+  animation: fadeUp var(--transition-base) ease-out;
+}
+
+.history-header {
+  margin-bottom: var(--space-6);
+}
+
+.history-header h1 {
+  margin-bottom: var(--space-2);
+}
+
+.history-header p {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.history-table-row {
+  cursor: pointer;
+}
+
+.history-table-row td {
+  vertical-align: middle;
+}
+
+.history-table-row:hover td {
+  color: var(--text-link);
+}
+
+.history-table-row .badge {
+  margin-right: var(--space-2);
+}
