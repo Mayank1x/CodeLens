@@ -186,13 +186,21 @@ def test_get_review_status(mock_llm_class, client):
     })
     review_id = json.loads(submit_response.data)["review_id"]
 
-    # Poll for status
-    response = client.get(f"/api/review/{review_id}")
-    assert response.status_code == 200
+    # Poll for status; keep polling until terminal state so teardown doesn't
+    # race with the background worker still writing to the DB.
+    deadline = time.time() + 5
+    data = None
+    while time.time() < deadline:
+        response = client.get(f"/api/review/{review_id}")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        if data["status"] in ["complete", "failed"]:
+            break
+        time.sleep(0.1)
 
-    data = json.loads(response.data)
+    assert data is not None
     assert data["id"] == review_id
-    assert data["status"] in ["pending", "processing", "complete"]
+    assert data["status"] in ["complete", "failed"]
 
 
 def test_get_review_not_found(client):
