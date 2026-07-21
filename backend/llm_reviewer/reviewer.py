@@ -40,10 +40,10 @@ class LLMReviewer:
         except ValueError:
             self.fallback = None
             # Not having a fallback is fine, we just won't fall back
-
+        # Increased timeout to 30 seconds because Gemini is currently taking ~18s
         self.timeout_seconds = 30
 
-    def analyze(self, code: str, language: str, static_issues: list[Issue]) -> list[Issue]:
+    def analyze(self, code: str, language: str, static_issues: list[Issue], diff_text: str = None) -> list[Issue]:
         """Run the LLM review and merge results with static issues.
 
         This method is guaranteed to return a valid list of issues, even if
@@ -52,12 +52,18 @@ class LLMReviewer:
         if not self.primary:
             return static_issues
 
-        prompt = build_review_prompt(code, language, static_issues)
+        prompt = build_review_prompt(code, language, static_issues, diff_text)
 
         # Attempt to get a valid JSON response from the LLM
         llm_response_text = self._execute_with_fallback_and_retry(prompt)
 
         if not llm_response_text:
+            # Track static-only fallback for admin dashboard health monitoring
+            try:
+                from api.review_worker import llm_health_stats
+                llm_health_stats["static_only"] += 1
+            except ImportError:
+                pass  # CLI mode — no worker module available
             print("Warning: LLM analysis failed or timed out. Returning static results only.")
             return static_issues
 
@@ -68,39 +74,46 @@ class LLMReviewer:
         return self._merge_issues(static_issues, llm_issues)
 
     def _execute_with_fallback_and_retry(self, prompt: str) -> str:
-        """Execute the LLM call, handling retries, fallbacks, and timeouts."""
+        """Execute the LLM call, handling retries, fallbacks, and timeouts.
 
-        # Attempt 1: Primary provider
+        Also tracks which provider succeeded/failed for the admin dashboard's
+        LLM health monitoring panel.
+        """
+        from api.review_worker import llm_health_stats
+
+        # Attempt 1: Primary provider (Gemini)
         try:
-            return self._call_provider_with_timeout(self.primary, prompt)
+            result = self._call_provider_with_timeout(self.primary, prompt)
+            llm_health_stats["gemini_success"] += 1
+            return result
         except LLMRateLimitError as e:
             print(f"Primary provider rate limited: {e}. Falling back to secondary...")
         except Exception as e:
-            # We treat malformed JSON as a general error in the parsing step,
-            # but if the API itself fails, we try the fallback.
             print(f"Primary provider failed: {e}. Falling back to secondary...")
 
-        # Attempt 2: Fallback provider (if available)
+        # Attempt 2: Fallback provider (Groq)
         if self.fallback:
             try:
-                return self._call_provider_with_timeout(self.fallback, prompt)
+                result = self._call_provider_with_timeout(self.fallback, prompt)
+                llm_health_stats["groq_fallback"] += 1
+                return result
             except Exception as e:
                 print(f"Fallback provider also failed: {e}.")
 
+        # Both providers failed — will return static-only results
+        llm_health_stats["llm_failure"] += 1
         return None
 
     def _call_provider_with_timeout(self, provider: LLMProvider, prompt: str) -> str:
-        """Call a provider, enforcing the hard timeout."""
-        # Use a ThreadPoolExecutor to enforce the 8-second timeout.
-        # This protects the backend from hanging forever if the LLM API is unresponsive.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(provider.generate_review, prompt, self.timeout_seconds)
-            try:
-                return future.result(timeout=self.timeout_seconds)
-            except concurrent.futures.TimeoutError:
-                # Cancel the future if possible, though Python threads can't be strictly killed
-                print(f"Timeout: {provider.__class__.__name__} took longer than {self.timeout_seconds}s.")
-                raise TimeoutError("LLM call timed out.")
+        """Call a provider directly."""
+        # We removed the inner ThreadPoolExecutor because nested executors 
+        # combined with google-genai's internal asyncio loop can cause deadlocks 
+        # in the Flask worker context. We will rely on the provider's native HTTP timeout.
+        try:
+            return provider.generate_review(prompt)
+        except Exception as e:
+            print(f"Provider {provider.__class__.__name__} failed: {e}")
+            raise
 
     def _parse_response(self, response_text: str) -> list[Issue]:
         """Parse the LLM's JSON response and convert to Issue objects."""

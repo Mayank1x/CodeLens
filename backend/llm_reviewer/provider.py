@@ -60,7 +60,7 @@ class GeminiProvider(LLMProvider):
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set.")
 
-        self.client = genai.Client(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key, http_options={'timeout': 30000})
         # We explicitly use Flash because it's fast and has a generous free tier
         self.model_name = "gemini-2.5-flash"
 

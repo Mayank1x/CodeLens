@@ -32,6 +32,7 @@ def init_db(app):
     with app.app_context():
         # Import all models so SQLAlchemy knows about them before create_all()
         from models.user import User      # noqa: F401
+        from models.batch import Batch    # noqa: F401
         from models.review import Review  # noqa: F401
         from models.issue import ReviewIssue  # noqa: F401
 

@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { getHistory } from '../api/client';
 import { STATUS_CONFIG, LANGUAGES } from '../utils/constants';
 import './HistoryPage.css';
 
 export default function HistoryPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,11 +18,15 @@ export default function HistoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const perPage = 10;
 
-  const navigate = useNavigate();
+  const isGuest = user?.username === 'Guest User' || user?.id === 'guest';
 
   useEffect(() => {
-    fetchHistory();
-  }, [page]);
+    if (!isGuest) {
+      fetchHistory();
+    } else {
+      setLoading(false);
+    }
+  }, [page, isGuest]);
 
   async function fetchHistory() {
     setLoading(true);
@@ -52,6 +60,28 @@ export default function HistoryPage() {
       hour: 'numeric',
       minute: '2-digit',
     }).format(d);
+  }
+
+  const handleGitHubLogin = () => {
+    window.location.href = `https://github.com/login/oauth/authorize?client_id=${import.meta.env.VITE_GITHUB_CLIENT_ID}&scope=read:user`;
+  };
+
+  if (isGuest) {
+    return (
+      <div className="page-container history-page">
+        <div className="history-header">
+          <h1>Review History</h1>
+          <p>A complete log of your past code reviews.</p>
+        </div>
+        <div className="card empty-state fade-in">
+          <h2>Log In to Track History</h2>
+          <p>Guest users cannot save code reviews. Log in with GitHub to view your permanent review history and track your improvements over time.</p>
+          <button className="btn btn--primary" onClick={handleGitHubLogin} style={{ marginTop: '16px' }}>
+            Log in with GitHub
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (loading && reviews.length === 0) {

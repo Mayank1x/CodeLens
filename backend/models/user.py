@@ -28,6 +28,7 @@ class User(db.Model):
     github_id = db.Column(db.String(64), unique=True, nullable=False)
     username = db.Column(db.String(128), nullable=False)
     avatar_url = db.Column(db.Text, nullable=True)
+    github_token = db.Column(db.Text, nullable=True) # Used for GitHub Contents API calls
     created_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),

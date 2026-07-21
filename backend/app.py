@@ -24,8 +24,8 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
 
-# Load environment variables from .env file (project root)
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+# Load environment variables from .env file (project root), override existing
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"), override=True)
 
 
 def create_app(test_config=None):
@@ -35,7 +35,9 @@ def create_app(test_config=None):
     # --- Core Configuration ---
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "dev"),
-        MAX_CONTENT_LENGTH=1 * 1024 * 1024,  # 1MB max upload size
+        # 1MB max upload — covers ZIP files. Individual code snippets are
+        # further validated at the route level (500KB / 5000 lines).
+        MAX_CONTENT_LENGTH=1 * 1024 * 1024,
 
         # SQLAlchemy database configuration
         SQLALCHEMY_DATABASE_URI=os.environ.get(
@@ -50,10 +52,10 @@ def create_app(test_config=None):
         app.config.from_mapping(test_config)
 
     # --- CORS ---
-    # In production, restrict origins to the specific Vercel frontend domain.
-    # For local dev, we allow all origins. The wildcard is acceptable here
-    # because all sensitive endpoints require JWT auth anyway.
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # Restrict to the configured frontend origin. In production this is the
+    # Vercel domain; in dev it defaults to localhost:5173.
+    frontend_origin = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    CORS(app, resources={r"/api/*": {"origins": frontend_origin}})
 
     # --- Rate Limiting ---
     # 10 reviews per hour per user, as the spec requires.
@@ -108,6 +110,14 @@ def create_app(test_config=None):
     # 10 per hour is strict enough to protect the free LLM tier but generous
     # enough for real usage and demos
     limiter.limit("10 per hour")(routes.submit_review)
+    limiter.limit("5 per hour")(routes.submit_batch_review)
+    limiter.limit("5 per hour")(routes.submit_github_review)
+    limiter.limit("5 per day")(routes.guest_login)
+
+    # Polling endpoints must be exempted from the global "50 per hour" limit
+    # because they are called every 2 seconds by the React frontend.
+    limiter.exempt(routes.get_review)
+    limiter.exempt(routes.get_batch)
 
     # --- Health Check ---
     @app.route("/health")

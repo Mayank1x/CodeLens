@@ -15,9 +15,12 @@ async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('codelens_token');
 
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -59,12 +62,29 @@ export async function githubLogin(code) {
   });
 }
 
+export async function guestLogin() {
+  return apiRequest('/api/auth/guest', {
+    method: 'POST',
+  });
+}
+
+export async function upgradeGithubScope(code) {
+  return apiRequest('/api/auth/github/upgrade', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
 /* ── Reviews ── */
 
-export async function submitReview(code, language) {
+export async function submitReview(code, language, previousReviewId = null) {
+  const payload = { code, language };
+  if (previousReviewId) {
+    payload.previous_review_id = previousReviewId;
+  }
   return apiRequest('/api/review', {
     method: 'POST',
-    body: JSON.stringify({ code, language }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -98,6 +118,65 @@ export async function pollReview(reviewId, onUpdate, intervalMs = 2000) {
   });
 }
 
+/* ── Batch & GitHub ── */
+
+export async function submitBatchReview(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  return apiRequest('/api/review/batch', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function submitGithubReview(repoUrl, selectedFiles = null) {
+  const payload = { repo_url: repoUrl };
+  if (selectedFiles && selectedFiles.length > 0) {
+    payload.selected_files = selectedFiles;
+  }
+  return apiRequest('/api/review/github', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getBatch(batchId) {
+  return apiRequest(`/api/batch/${batchId}`);
+}
+
+export async function pollBatch(batchId, onUpdate, intervalMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const poll = async () => {
+      try {
+        const data = await getBatch(batchId);
+        onUpdate(data);
+
+        if (data.status === 'complete' || data.status === 'failed') {
+          resolve(data);
+        } else {
+          setTimeout(poll, intervalMs);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    poll();
+  });
+}
+
+/* ── GitHub Repo Browsing ── */
+
+export async function getGithubRepos(page = 1, perPage = 20, search = '') {
+  const params = new URLSearchParams({ page, per_page: perPage });
+  if (search) params.set('search', search);
+  return apiRequest(`/api/github/repos?${params}`);
+}
+
+export async function getRepoTree(owner, repo) {
+  return apiRequest(`/api/github/repos/${owner}/${repo}/tree`);
+}
+
 /* ── History ── */
 
 export async function getHistory(page = 1, perPage = 10) {
@@ -109,3 +188,8 @@ export async function getHistory(page = 1, perPage = 10) {
 export async function getStats() {
   return apiRequest('/api/stats');
 }
+
+export async function getAdminStats() {
+  return apiRequest('/api/admin/stats');
+}
+

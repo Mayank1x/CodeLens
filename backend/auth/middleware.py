@@ -36,6 +36,8 @@ def require_auth(f):
         # a real JWT. This makes local development much faster.
         if os.environ.get("SKIP_AUTH", "").lower() == "true":
             g.current_user_id = _get_or_create_dev_user()
+            g.is_guest = False
+            g.guest_session_id = None
             return f(*args, **kwargs)
 
         # --- Production auth flow ---
@@ -52,13 +54,23 @@ def require_auth(f):
         token = parts[1]
 
         try:
-            user_id = decode_token(token)
-            g.current_user_id = user_id
-            return f(*args, **kwargs)
-
+            payload = decode_token(token)
+            
+            if payload.get("is_guest"):
+                g.current_user_id = None
+                g.is_guest = True
+                # Guest session ID ties this guest's reviews to their specific session
+                g.guest_session_id = payload.get("guest_session_id")
+            else:
+                g.current_user_id = payload.get("sub")
+                g.is_guest = False
+                g.guest_session_id = None
+                
         except Exception as e:
             # Catches ExpiredSignatureError, InvalidTokenError, etc.
             return jsonify({"error": f"Invalid or expired token: {str(e)}"}), 401
+
+        return f(*args, **kwargs)
 
     return decorated
 

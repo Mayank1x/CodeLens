@@ -25,10 +25,15 @@ class Review(db.Model):
     user_id = db.Column(
         db.String(36),
         db.ForeignKey("users.id"),
-        nullable=False,
+        nullable=True,
     )
     language = db.Column(db.String(32), nullable=False)
     code_snippet = db.Column(db.Text, nullable=False)
+
+    # Original filename for batch/GitHub reviews — enables the UI to show
+    # real filenames instead of opaque UUIDs in the batch results list.
+    # Null for single-paste reviews which don't have a source file.
+    filename = db.Column(db.String(512), nullable=True)
 
     # Status lifecycle: pending → processing → complete | failed
     # Using a string column rather than a Postgres ENUM so we can add
@@ -40,6 +45,19 @@ class Review(db.Model):
         default=lambda: datetime.now(timezone.utc),
     )
     completed_at = db.Column(db.DateTime, nullable=True)
+
+    batch_id = db.Column(
+        db.String(36),
+        db.ForeignKey("batches.id"),
+        nullable=True,
+    )
+    health_score = db.Column(db.Integer, nullable=True)
+    diff_summary = db.Column(db.String(255), nullable=True)
+
+    # Guest session tracking — when a guest submits a review, we store their
+    # unique session ID (from the JWT) so they can retrieve their own reviews
+    # without being able to see other guests' reviews.
+    guest_session_id = db.Column(db.String(36), nullable=True)
 
     # Relationship to issues — cascade delete so cleaning up a review
     # automatically removes its issues (no orphaned data)
@@ -59,8 +77,12 @@ class Review(db.Model):
         """
         data = {
             "id": self.id,
+            "batch_id": self.batch_id,
+            "filename": self.filename,
             "language": self.language,
             "status": self.status,
+            "health_score": self.health_score,
+            "diff_summary": self.diff_summary,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "issue_count": self.issues.count(),

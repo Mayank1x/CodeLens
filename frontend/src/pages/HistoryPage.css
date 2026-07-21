@@ -1,5 +1,5 @@
 .history-page {
-  animation: fadeUp var(--transition-base) ease-out;
+  animation: fadeUp var(--transition-slow) ease-out;
 }
 
 .history-header {
@@ -12,7 +12,7 @@
 
 .history-header p {
   color: var(--text-secondary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
 }
 
 .history-table-row {
@@ -24,7 +24,7 @@
 }
 
 .history-table-row:hover td {
-  color: var(--text-link);
+  color: var(--accent);
 }
 
 .history-table-row .badge {

@@ -153,7 +153,7 @@ This phase extends the existing single-file pipeline (Phases 1–2) to handle mu
 
 - New endpoint: `POST /api/review/batch` — accepts a `.zip` file (`multipart/form-data`)
 - Flask extracts the zip into a temp directory. **Security requirement: sanitize every extracted file path before writing to disk** to prevent zip-slip path traversal (reject or strip any path containing `../` or resolving outside the target temp directory)
-- Walk the extracted directory tree; build a file filter that skips: `node_modules/`, `.git/`, `__pycache__/`, `venv/`, binary files, files over 500KB, and any extension not in the supported language list (Python, JS, Java, C++)
+- Walk the extracted directory tree; apply the same extension-to-language filter defined in 5b (Python, JavaScript, Java, C++ only — see table below). Skip `node_modules/`, `.git/`, `__pycache__/`, `venv/`, binary files, and files over 500KB. Files with unsupported extensions are skipped silently (not an error) and counted in the "X of Y files scanned" summary shown to the user, same as in 5b
 - For each remaining file, run the existing Phase 1 + Phase 2 pipeline (no changes to that code — reuse it as-is)
 - Hard cap: max 30 files per batch submission (protects the free LLM daily quota); return a clear error if exceeded, suggesting the user select a smaller subset
 
@@ -166,7 +166,18 @@ This phase extends the existing single-file pipeline (Phases 1–2) to handle mu
   - Never log, store, or transmit repo *contents* anywhere beyond what's needed for the immediate review — only the analysis results are persisted to the database, not full repo contents
 - Use the GitHub Contents API (not a full `git clone`) to list and fetch files — lighter weight than cloning, and works well for a single-file-at-a-time pipeline. The same authenticated API call works for both public and private repos once the token has `repo` scope — GitHub's API handles the permission check transparently based on the token's access
 - Use the authenticated user's GitHub OAuth token (already obtained in Phase 3, now with `repo` scope) for these API calls — authenticated requests get 5,000/hour vs. 60/hour unauthenticated
-- Apply the same file filter and 30-file cap as 5a
+- **Handling mixed-language repos (important — real repos are never single-language):** apply this extension-to-language mapping when walking the repo tree:
+
+  | Extension | Language | Analyzed? |
+  |---|---|---|
+  | `.py` | Python | Yes — full static + LLM pipeline |
+  | `.js`, `.jsx` | JavaScript | Yes — full static + LLM pipeline |
+  | `.java` | Java | Yes — full static + LLM pipeline |
+  | `.cpp`, `.cc`, `.hpp`, `.h` | C++ | Yes — full static + LLM pipeline |
+  | everything else (`.md`, `.json`, `.yml`, `.lock`, `.css`, `.html`, images, etc.) | — | No — skipped silently, not flagged as an error |
+
+  A typical repo scan will therefore only review a subset of its files — this is expected and correct behavior, not a bug. The batch results UI must clearly communicate this: show a summary line like "Scanned 18 of 47 files (29 skipped: unsupported file type)" so the user understands why their `README.md` or `package.json` wasn't reviewed, rather than wondering if something failed
+  - Apply the same file filter (ignore `node_modules/`, `.git/`, etc.) and 30-file cap as 5a, counted only against files that pass the language filter
 - Reuse the same per-file pipeline and aggregation logic as 5a — the only difference between 5a and 5b is how files are *obtained*, not how they're analyzed
 
 **A note on testing with real users:** since this feature can access a user's private repos, be thoughtful when asking friends to test it — make sure they understand exactly what access they're granting before connecting their GitHub account, and consider testing this specific feature primarily with your own account rather than asking many people to grant broad repo access to a student project.
@@ -248,6 +259,19 @@ The default output of most AI page-builders tends toward a recognizable look: ce
 
 ---
 
+### Phase 6.5 — Tests and CI (last addition before deployment)
+
+This is intentionally small in scope — the goal is confidence, not coverage percentage.
+
+- Write integration tests (pytest + Flask's test client) covering the core happy paths: submit a single-file review and verify a result comes back with the expected shape, submit a batch zip and verify aggregation works, hit a protected endpoint without auth and verify a 401, exceed the rate limit and verify a 429
+- Write at least one test that deliberately simulates an LLM failure (mock the Gemini call to raise an exception) and verifies the system falls back to Groq, then to static-only results, without crashing
+- Set up a GitHub Actions workflow (`.github/workflows/test.yml`) that runs the full pytest suite (Phase 1 unit tests + these integration tests) on every push and pull request
+- Add a passing/failing badge to the top of the README, linked to the Actions workflow — this is a small visual detail that signals engineering maturity at a glance
+
+**This is the last phase that adds new scope.** No further features should be added after this phase — the next steps are the review pass and deployment, not more building.
+
+---
+
 ### Phase 7 — Deployment, docs, and polish
 
 **Free deployment plan (verified options, no credit card required, as of mid-2026):**
@@ -294,3 +318,5 @@ Steps:
 ## Critical instruction for the coding agent
 
 Build this in the phase order listed above. After completing each phase, pause and produce a brief summary of what was built and why specific implementation choices were made (e.g., "used ThreadPoolExecutor instead of Celery because..."). Do not skip ahead to later phases before earlier phases are verified working. Prioritize code that is readable and well-commented over clever/compressed code, since this project will be explained line-by-line in technical interviews. Every non-trivial design decision should be accompanied by a one-sentence comment explaining the reasoning, not just what the code does.
+
+**Scope is frozen at Phase 6.5.** If asked to add functionality beyond what is specified in Phases 1 through 6.5, push back and suggest it be noted in the README as a "future improvement" instead of being built — this project's scope was deliberately finalized, and Phase 7 (deployment) is meant to be the last phase, not a checkpoint to add more from.

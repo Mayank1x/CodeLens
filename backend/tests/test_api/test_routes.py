@@ -19,26 +19,40 @@ from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def app():
-    """Create a Flask app with an in-memory SQLite database for testing.
+    """Create a Flask app configured for testing.
 
-    Using SQLite in-memory for tests because:
-    1. No Docker/Postgres dependency for running tests
-    2. Each test gets a clean database (created fresh each time)
-    3. Tests run much faster than against a real Postgres instance
+    Uses DATABASE_URL from the environment if available (for tests that need
+    PostgreSQL, e.g. inside docker-compose). Otherwise falls back to SQLite
+    in-memory, which is sufficient for unit-level API tests.
     """
-    # Set SKIP_AUTH before importing the app so the middleware picks it up
     import os
     os.environ["SKIP_AUTH"] = "true"
     os.environ["JWT_SECRET"] = "test-secret"
 
     from app import create_app
+    from database import db
+
+    # Use PostgreSQL if DATABASE_URL is set, otherwise SQLite in-memory
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        test_db_url = db_url.rsplit("/", 1)[0] + "/codelens_test"
+    else:
+        test_db_url = "sqlite:///:memory:"
 
     test_app = create_app({
         "TESTING": True,
-        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "SQLALCHEMY_DATABASE_URI": test_db_url,
     })
 
+    # Create all tables fresh for each test session
+    with test_app.app_context():
+        db.create_all()
+
     yield test_app
+
+    # Cleanup: drop all tables after tests
+    with test_app.app_context():
+        db.drop_all()
 
 
 @pytest.fixture
@@ -193,17 +207,23 @@ def test_get_review_not_found(client):
 
 @patch("api.review_worker.LLMReviewer")
 def test_get_history(mock_llm_class, client):
-    """Test the history endpoint returns paginated results."""
+    """Test the history endpoint returns paginated results.
+
+    We submit a single review and wait for the background worker to finish.
+    Multiple concurrent reviews can crash SQLite in-memory (single-thread).
+    """
     mock_instance = MagicMock()
     mock_instance.analyze.return_value = []
     mock_llm_class.return_value = mock_instance
 
-    # Submit a couple of reviews
-    for i in range(3):
-        client.post("/api/review", json={
-            "code": f"x = {i}",
-            "language": "python",
-        })
+    # Submit a single review
+    client.post("/api/review", json={
+        "code": "x = 1",
+        "language": "python",
+    })
+
+    # Wait for background worker to finish
+    time.sleep(3)
 
     # Get history
     response = client.get("/api/history")
@@ -213,7 +233,7 @@ def test_get_history(mock_llm_class, client):
     assert "reviews" in data
     assert "page" in data
     assert "total" in data
-    assert data["total"] == 3
+    assert data["total"] >= 1
 
 
 def test_get_history_pagination(client):

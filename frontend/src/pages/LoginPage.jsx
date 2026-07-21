@@ -1,112 +1,155 @@
+/**
+ * LoginPage — Asymmetric split layout
+ *
+ * Left: branding + feature list. Right: auth buttons.
+ * Per spec 7c: Guest button is MORE prominent than GitHub button,
+ * and the layout avoids the centered-hero SaaS template look.
+ */
+
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { githubLogin } from '../api/client';
 import './LoginPage.css';
 
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
-const REDIRECT_URI = `${window.location.origin}/login`;
 
-export default function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+function LoginPage() {
+  const { login, guestLogin } = useAuth();
   const [searchParams] = useSearchParams();
-  const [error, setError] = useState(null);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // If already logged in, redirect to the review page
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/review', { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
-
-  // Handle the OAuth callback — GitHub redirects back with ?code=...
+  // Handle the GitHub OAuth callback — the code arrives as a query param
   useEffect(() => {
     const code = searchParams.get('code');
-    if (!code) return;
+    if (code) {
+      setLoading(true);
+      setError(null);
+      handleGitHubCallback(code);
+    }
+  }, [searchParams]);
 
-    setLoading(true);
-    setError(null);
-
-    githubLogin(code)
-      .then((data) => {
-        login(data.token, data.user);
-        navigate('/review', { replace: true });
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, [searchParams, login, navigate]);
+  async function handleGitHubCallback(code) {
+    try {
+      await login(code);
+      navigate('/review');
+    } catch (err) {
+      setError(err.message || 'GitHub authentication failed.');
+      setLoading(false);
+    }
+  }
 
   function handleGitHubLogin() {
-    // Redirect to GitHub's OAuth authorization page.
-    // After the user authorizes, GitHub redirects back to our REDIRECT_URI
-    // with a ?code= parameter that we exchange for a JWT.
-    const githubAuthUrl =
-      `https://github.com/login/oauth/authorize` +
-      `?client_id=${GITHUB_CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-      `&scope=read:user`;
+    // Don't set redirect_uri — let GitHub use the one configured in the OAuth App settings
+    const authUrl =
+      `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=read:user`;
+    window.location.href = authUrl;
+  }
 
-    window.location.href = githubAuthUrl;
+  async function handleGuestLogin() {
+    setLoading(true);
+    setError(null);
+    try {
+      await guestLogin();
+      navigate('/review');
+    } catch (err) {
+      setError(err.message || 'Guest login failed.');
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="login-page">
+        <div className="login-page__left">
+          <div className="login-loading">
+            <div className="spinner"></div>
+            Authenticating...
+          </div>
+        </div>
+        <div className="login-page__right"></div>
+      </div>
+    );
   }
 
   return (
     <div className="login-page">
-      <div className="login-card card card--elevated">
-        <div className="login-card__logo">
+      {/* Left side — branding and features */}
+      <div className="login-page__left">
+        <h1 className="login-logo">
           Code<span>Lens</span>
-        </div>
-
-        <p className="login-card__tagline">
-          AI-powered code review that combines static analysis with
-          LLM-based semantic analysis to find bugs, security vulnerabilities,
-          and code quality issues.
+        </h1>
+        <p className="login-tagline">
+          AI-powered code review that combines static analysis with LLM semantic analysis.
+          Find bugs, security issues, and code quality problems before they reach production.
         </p>
 
-        <div className="login-card__divider" />
-
-        {loading ? (
-          <div className="login-card__loading">
-            <div className="spinner" />
-            Authenticating with GitHub...
+        <div className="login-features">
+          <div className="login-feature">
+            <div className="login-feature__icon"></div>
+            <div>
+              <h4>Static + LLM Analysis</h4>
+              <p>8 pattern-based rules plus Gemini/Groq semantic review</p>
+            </div>
           </div>
-        ) : (
+          <div className="login-feature">
+            <div className="login-feature__icon"></div>
+            <div>
+              <h4>Multi-language Support</h4>
+              <p>Python, JavaScript, Java, and C++ out of the box</p>
+            </div>
+          </div>
+          <div className="login-feature">
+            <div className="login-feature__icon"></div>
+            <div>
+              <h4>GitHub Integration</h4>
+              <p>Scan your repositories directly — browse and select files</p>
+            </div>
+          </div>
+          <div className="login-feature">
+            <div className="login-feature__icon"></div>
+            <div>
+              <h4>Health Score Tracking</h4>
+              <p>Track code quality over time with diff-aware re-reviews</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right side — auth buttons */}
+      <div className="login-page__right">
+        <div className="login-auth">
+          <h2 className="login-auth__title">Get Started</h2>
+
+          {error && <div className="login-error">{error}</div>}
+
+          {/* Guest button is primary (amber) per spec 7c */}
           <button
-            className="btn login-card__github-btn"
-            onClick={handleGitHubLogin}
-            disabled={!GITHUB_CLIENT_ID}
+            id="guest-login-btn"
+            className="btn btn--primary login-guest-btn"
+            onClick={handleGuestLogin}
           >
-            <svg className="login-card__github-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+            Try as Guest — No signup needed
+          </button>
+
+          <div className="login-auth__divider">or</div>
+
+          {/* GitHub button is secondary */}
+          <button
+            id="github-login-btn"
+            className="btn btn--secondary login-github-btn"
+            onClick={handleGitHubLogin}
+          >
+            <svg className="login-github-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
             </svg>
             Sign in with GitHub
           </button>
-        )}
-
-        {error && <div className="login-card__error">{error}</div>}
-
-        <div className="login-card__features">
-          <div className="login-card__feature">
-            <h4>Static Analysis</h4>
-            <p>8 built-in rules catch secrets, SQL injection, and more</p>
-          </div>
-          <div className="login-card__feature">
-            <h4>LLM Review</h4>
-            <p>AI-powered semantic analysis finds deeper issues</p>
-          </div>
-          <div className="login-card__feature">
-            <h4>Review History</h4>
-            <p>Track all your past reviews and trends over time</p>
-          </div>
-          <div className="login-card__feature">
-            <h4>4 Languages</h4>
-            <p>Python, JavaScript, Java, and C++ supported</p>
-          </div>
         </div>
       </div>
     </div>
   );
 }
+
+export default LoginPage;

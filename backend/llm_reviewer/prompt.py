@@ -9,7 +9,7 @@ instructions.
 from static_analyzer.models import Issue
 
 
-def build_review_prompt(code: str, language: str, static_issues: list[Issue]) -> str:
+def build_review_prompt(code: str, language: str, static_issues: list[Issue], diff_text: str = None) -> str:
     """Constructs the prompt instructing the LLM on how to review the code.
 
     Design decision: We explicitly list the issues already found by the
@@ -25,7 +25,20 @@ resource leaks, architectural flaws, and bad practices.
 
 DO NOT flag syntax errors. Assume the code compiles/runs.
 DO NOT focus on trivial style issues (like line length) unless they severely impact readability.
+"""
+    if diff_text:
+        prompt += f"""
+IMPORTANT: The user has updated this code since the last review.
+A unified diff is provided below showing what changed. 
+Please focus ONLY on reviewing the modified lines and the immediate context surrounding them.
 
+DIFF:
+```diff
+{diff_text}
+```
+"""
+
+    prompt += f"""
 CODE TO REVIEW (with line numbers):
 ```
 {numbered_code}

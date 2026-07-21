@@ -55,3 +55,7 @@ venv.bak/
 # Docker
 docker-compose.override.yml
 postgres-data/
+
+# Node.js / Frontend
+node_modules/
+frontend/dist/

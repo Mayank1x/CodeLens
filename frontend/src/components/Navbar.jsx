@@ -44,6 +44,16 @@ export default function Navbar() {
         >
           Dashboard
         </NavLink>
+        {user?.id !== 'guest' && (import.meta.env.VITE_ADMIN_USERS || "").split(',').includes(user?.username) && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              `navbar__link ${isActive ? 'navbar__link--active' : ''}`
+            }
+          >
+            Admin
+          </NavLink>
+        )}
       </div>
 
       <div className="navbar__user">
